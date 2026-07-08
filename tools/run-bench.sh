@@ -10,7 +10,7 @@
 # the forked arm disables C2 on the forks via Surefire's argLine.
 #
 # Inputs (env):
-#   BENCH_CLASSES  comma-separated N list   (default 0,1,10,50,100,200,500)
+#   BENCH_CLASSES  comma-separated N list   (default 0,1,10,50,100,200)
 #   BENCH_REPEATS  measured runs per cell   (default 5; trimmed for large N)
 #
 # Network: one ONLINE prime populates ~/.m2; every TIMED run is `-o` (offline),
@@ -20,7 +20,7 @@ set -euo pipefail
 # Run from the repo root regardless of caller CWD.
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 
-CLASSES="${BENCH_CLASSES:-0,1,10,50,100,200,500}"
+CLASSES="${BENCH_CLASSES:-0,1,10,50,100,200}"
 REPEATS="${BENCH_REPEATS:-5}"
 NOISY_CV=15          # flag a cell whose CV% exceeds this as noisy
 
@@ -71,11 +71,10 @@ set_class_set() {
 }
 
 # Adaptive repeats: keep total CI time bounded as N (and per-run cost) grows.
+# N=200 is the heaviest tier, so it takes the trim.
 repeats_for() {
   local N="$1" r="$REPEATS"
-  if [ "$N" -ge 500 ]; then
-    if [ "$r" -gt 3 ]; then r=3; fi
-  elif [ "$N" -ge 200 ]; then
+  if [ "$N" -ge 200 ]; then
     if [ "$r" -gt 4 ]; then r=4; fi
   fi
   printf '%s' "$r"

@@ -9,7 +9,7 @@ on:
     inputs:
       classes:
         description: "N list (comma-separated)"
-        default: "0,1,10,50,100,200,500"
+        default: "0,1,10,50,100,200"
       repeats:
         description: "measured runs per cell (adaptive: trimmed for large N)"
         default: "5"
@@ -32,7 +32,7 @@ jobs:
       - name: Run sweep
         run: bash tools/run-bench.sh
         env:
-          BENCH_CLASSES: ${{ github.event.inputs.classes || '0,1,10,50,100,200,500' }}
+          BENCH_CLASSES: ${{ github.event.inputs.classes || '0,1,10,50,100,200' }}
           BENCH_REPEATS: ${{ github.event.inputs.repeats || '5' }}
 
       - name: Publish summary to the job page

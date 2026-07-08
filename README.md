@@ -59,7 +59,7 @@ number of forked JVMs (`reuseForks=false` ⇒ one fork per class).
     the fixed `surefire:test` goal + classpath-scan overhead every other cell also
     pays.
   - **N=1**, **N=10** live in `bench/fixed/n1/` and `bench/fixed/n10/`.
-- **Generated tiers — N ∈ {50, 100, 200, 500}** (the CI default). Emitted at bench
+- **Generated tiers — N ∈ {50, 100, 200}** (the CI default). Emitted at bench
   time into `src/test/java/bench/gen/` (gitignored) and regenerated for each N.
 
 Every class under `src/test/java` always compiles, but a single timed run
@@ -73,7 +73,7 @@ Requires JDK 17+ and Maven. The scripts are bash (Linux / macOS / Git Bash / WSL
 ### Full sweep
 
 ```bash
-# defaults: BENCH_CLASSES="0,1,10,50,100,200,500", BENCH_REPEATS="5"
+# defaults: BENCH_CLASSES="0,1,10,50,100,200", BENCH_REPEATS="5"
 bash tools/run-bench.sh
 
 # a quick subset:
