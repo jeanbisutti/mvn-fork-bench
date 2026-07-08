@@ -198,6 +198,49 @@ for N in $NLIST; do
   fi
 done
 
+# --- chart helpers -------------------------------------------------------
+# Fixed-width (15-char) config label so the Unicode bars line up.
+label_of() {
+  case "$1" in
+    nofork_c2on)  printf 'no-fork  C2-on ' ;;
+    nofork_c2off) printf 'no-fork  C2-off' ;;
+    fork_c2on)    printf 'forked   C2-on ' ;;
+    fork_c2off)   printf 'forked   C2-off' ;;
+  esac
+}
+
+# bar_of <value> <max> -> a MAXW-wide █/░ bar scaled to <max>. Built entirely in
+# awk, so there is no shell arithmetic (set -e safe) and no multibyte surprises.
+MAXW=40
+bar_of() {
+  awk -v v="$1" -v m="$2" -v W="$MAXW" 'BEGIN{
+    n = (m <= 0) ? 0 : int(v / m * W + 0.5)
+    if (n < 0) n = 0; if (n > W) n = W
+    s = ""; for (i = 0; i < n; i++) s = s "█"; for (i = n; i < W; i++) s = s "░"
+    printf "%s", s
+  }'
+}
+
+# Global max median (a comparable bar scale across every N) plus the mermaid
+# fork-cost series: per-N fork-cost %, the x-axis categories, and the y-axis max.
+gmax=1; mm_x=""; mm_bar=""; mm_ymax=10
+for N in $NLIST; do
+  for cfg in $CONFIGS; do
+    m="${MED[$N,$cfg]:-NA}"
+    if [ "$m" = "NA" ]; then continue; fi
+    if [ "$m" -gt "$gmax" ] 2>/dev/null; then gmax="$m"; fi
+  done
+  fc="0"
+  b="${MED[$N,fork_c2on]:-NA}"; a="${MED[$N,nofork_c2on]:-NA}"
+  if [ "$a" != "NA" ] && [ "$b" != "NA" ] && [ "$a" -gt 0 ] 2>/dev/null; then
+    fc="$(awk -v x="$b" -v base="$a" 'BEGIN{ r = 100.0*(x-base)/base; if (r < 0) r = 0; printf "%.0f", r }')"
+  fi
+  mm_x="${mm_x}${mm_x:+, }${N}"
+  mm_bar="${mm_bar}${mm_bar:+, }${fc}"
+  if [ "$fc" -gt "$mm_ymax" ] 2>/dev/null; then mm_ymax="$fc"; fi
+done
+mm_ymax="$(awk -v m="$mm_ymax" 'BEGIN{ b = 50; if (m < b) m = b; print (int((m - 1) / b) + 1) * b }')"
+
 {
   echo "# mvn-fork-bench — results"
   echo
@@ -229,6 +272,40 @@ done
   else
     echo "_No cell produced a median — check $LOG and results/wall.tsv._"
   fi
+  echo
+
+  echo "## Median wall time by N"
+  echo
+  echo "_Bars scaled to the global maximum (${gmax} ms): longer = slower, and the"
+  echo "forked rows visibly stretch as N grows._"
+  echo
+  echo '```text'
+  for N in $NLIST; do
+    echo "N=${N}"
+    for cfg in $CONFIGS; do
+      m="${MED[$N,$cfg]:-NA}"
+      if [ "$m" = "NA" ]; then
+        printf '  %s  %s     —\n'   "$(label_of "$cfg")" "$(bar_of 0 "$gmax")"
+      else
+        printf '  %s  %s  %6s ms\n' "$(label_of "$cfg")" "$(bar_of "$m" "$gmax")" "$m"
+      fi
+    done
+    echo
+  done
+  echo '```'
+  echo
+
+  echo "## Fork cost by N"
+  echo
+  echo '```mermaid'
+  echo 'xychart-beta'
+  echo '    title "Fork cost: forked C2-on vs in-process baseline (% over baseline)"'
+  echo "    x-axis [${mm_x}]"
+  echo "    y-axis \"Fork cost (%)\" 0 --> ${mm_ymax}"
+  echo "    bar [${mm_bar}]"
+  echo '```'
+  echo "_Each bar = median forked (C2-on) wall time as a percentage above the"
+  echo "no-fork/C2-on baseline for that N; values below 0 (within noise) clamped to 0._"
   echo
 
   echo "## Wall time by N (median ± CV, delta vs baseline)"

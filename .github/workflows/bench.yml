@@ -37,7 +37,13 @@ jobs:
 
       - name: Publish summary to the job page
         if: always()
-        run: cat results/summary.md >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          if [ -f results/summary.md ]; then
+            cat results/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## fork-bench: no summary produced" >> "$GITHUB_STEP_SUMMARY"
+            echo "The sweep did not write \`results/summary.md\` — check the job log." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload raw results
         if: always()
