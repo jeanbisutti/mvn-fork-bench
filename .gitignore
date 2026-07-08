@@ -1,0 +1,16 @@
+# Maven build output
+target/
+
+# Generated test tiers (N >= 50) — emitted at bench time, never committed.
+# The fixed/ tiers (n1, n10) ARE committed; only gen/ is ignored.
+src/test/java/bench/gen/
+
+# Benchmark output (raw wall.tsv, stats.tsv, summary.md) — CI uploads it as an
+# artifact; locally it is reproducible, so keep it out of git.
+results/
+
+# Editors / OS
+.idea/
+*.iml
+.vscode/
+.DS_Store

@@ -1,0 +1,14 @@
+mvn-fork-bench
+Copyright 2026 Jean Bisutti
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+this project except in compliance with the License. You may obtain a copy of the
+License in the LICENSE file distributed alongside this NOTICE, or at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+This project is a standalone Maven benchmark measuring the wall-clock cost of
+forking test JVMs versus running the same tests in-process, and the effect of the
+C2 JIT compiler on that cost. It depends at build time on JUnit 5 (EPL-2.0) and
+the Apache Maven Surefire Plugin (Apache-2.0), which are downloaded from Maven
+Central and are not redistributed here.

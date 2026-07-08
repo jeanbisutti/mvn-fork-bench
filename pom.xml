@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>io.github.mvnflight.bench</groupId>
+  <artifactId>mvn-fork-bench</artifactId>
+  <version>1.0.0-SNAPSHOT</version>
+  <packaging>jar</packaging>
+
+  <name>mvn-fork-bench</name>
+  <description>
+    Wall-clock benchmark: forking many test JVMs (one per class) versus running
+    the same tests in-process, and whether the C2 JIT compiler changes that cost.
+  </description>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- Java 17 == the CI toolchain (Temurin 17). release keeps bytecode portable. -->
+    <maven.compiler.release>17</maven.compiler.release>
+
+    <junit.version>5.10.2</junit.version>
+    <surefire.version>3.2.5</surefire.version>
+
+    <!--
+      The two benchmark axes + class-set selector, read by the Surefire config
+      below. These are SAFE NO-OP DEFAULTS so `mvn test` on a fresh checkout does
+      nothing surprising: forkCount=1/reuseForks=true is Surefire's own default,
+      an empty argLine adds no flags, and the default include pattern points at
+      the empty n0 set so a bare build runs zero tests. tools/run-bench.sh and the
+      four documented commands override every one of these with -D.
+    -->
+    <bench.forkCount>1</bench.forkCount>
+    <bench.reuseForks>true</bench.reuseForks>
+    <bench.argLine></bench.argLine>
+    <bench.includes>bench/fixed/n0/*Test.java</bench.includes>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>${surefire.version}</version>
+        <configuration>
+          <!-- Fork axis: forkCount=0 -> in-process (no fork);
+               forkCount=1 + reuseForks=false -> one fresh JVM per test class. -->
+          <forkCount>${bench.forkCount}</forkCount>
+          <reuseForks>${bench.reuseForks}</reuseForks>
+
+          <!-- C2 axis (forked arm only): the forks inherit this argLine, so
+               -XX:TieredStopAtLevel=1 disables C2 in the forks without touching
+               the Maven JVM. The no-fork arm disables C2 via MAVEN_OPTS instead. -->
+          <argLine>${bench.argLine}</argLine>
+
+          <!-- Class-set selector: exactly one set runs per measurement. Replaces
+               Surefire's default *Test/Test* includes so nothing else sneaks in. -->
+          <includes>
+            <include>${bench.includes}</include>
+          </includes>
+
+          <!-- Keep the timed goal quiet, deterministic, and non-fatal on an
+               empty set (the N=0 calibration floor matches zero classes). -->
+          <redirectTestOutputToFile>true</redirectTestOutputToFile>
+          <failIfNoTests>false</failIfNoTests>
+          <trimStackTrace>false</trimStackTrace>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

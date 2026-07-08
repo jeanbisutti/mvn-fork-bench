@@ -1,0 +1,47 @@
+name: fork-bench
+
+# Wall-clock sweep of the fork-vs-in-process x C2-on/off matrix.
+# Manual dispatch (with a tunable N-list and repeat count) plus an optional
+# nightly run. ubuntu-latest only — GitHub-hosted runners are shared VMs, so
+# treat single runs as indicative and watch the CV column in the summary.
+on:
+  workflow_dispatch:
+    inputs:
+      classes:
+        description: "N list (comma-separated)"
+        default: "0,1,10,50,100,200,500"
+      repeats:
+        description: "measured runs per cell (adaptive: trimmed for large N)"
+        default: "5"
+  schedule:
+    - cron: "0 3 * * *"   # optional nightly (03:00 UTC)
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven          # cache ~/.m2/repository across runs (keyed on pom.xml)
+
+      - name: Run sweep
+        run: bash tools/run-bench.sh
+        env:
+          BENCH_CLASSES: ${{ github.event.inputs.classes || '0,1,10,50,100,200,500' }}
+          BENCH_REPEATS: ${{ github.event.inputs.repeats || '5' }}
+
+      - name: Publish summary to the job page
+        if: always()
+        run: cat results/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload raw results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fork-bench-results
+          path: results/
