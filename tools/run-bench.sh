@@ -173,8 +173,16 @@ done
 # ---------------------------------------------------------------------------
 # summary.md — key findings first, then the raw table + derived deltas.
 # ---------------------------------------------------------------------------
-pct() {  # pct <value> <base> -> "+240%" | "-12%" | "n/a"
+pct() {  # pct <value> <base> -> "+240%" | "-12%" | "n/a"   (increase over base)
   awk -v a="$1" -v b="$2" 'BEGIN{ if (b+0 > 0) printf "%+.0f%%", 100.0*(a-b)/b; else printf "n/a" }'
+}
+
+mult() {  # mult <value> <base> -> "2.83×" | "n/a"          (times as long as base)
+  awk -v a="$1" -v b="$2" 'BEGIN{ if (b+0 > 0) printf "%.2f×", a/b; else printf "n/a" }'
+}
+
+delta() {  # delta <value> <base> -> "+183%, 2.83×" | "n/a" (both forms; no nested parens)
+  awk -v a="$1" -v b="$2" 'BEGIN{ if (b+0 > 0) printf "%+.0f%%, %.2f×", 100.0*(a-b)/b, a/b; else printf "n/a" }'
 }
 
 cell() {  # cell <N> <cfg>  -> markdown cell (baseline shows no delta)
@@ -186,7 +194,7 @@ cell() {  # cell <N> <cfg>  -> markdown cell (baseline shows no delta)
   if [ "$cfg" = "nofork_c2on" ]; then
     printf '%s ms ±%s%%%s' "$med" "$cv" "$flag"
   else
-    printf '%s ms ±%s%% (%s)%s' "$med" "$cv" "$(pct "$med" "$base")" "$flag"
+    printf '%s ms ±%s%% (%s)%s' "$med" "$cv" "$(delta "$med" "$base")" "$flag"
   fi
 }
 
@@ -250,24 +258,27 @@ mm_ymax="$(awk -v m="$mm_ymax" 'BEGIN{ b = 50; if (m < b) m = b; print (int((m -
   echo "(a noise gauge — cells above ${NOISY_CV}% are flagged ⚠ and should be re-run)."
   echo
   echo "- Timed goal: \`surefire:test\` only, offline (\`-o\`), against pre-compiled classes."
-  echo "- Baseline (100%): **no-fork, C2-on**. Other cells show their delta vs that baseline."
+  echo "- Baseline (100%): **no-fork, C2-on**. Other cells show their **delta % and multiplier (×)** vs that baseline (see \"How the numbers are computed\")."
   echo "- Repeats: ${REPEATS} per cell (adaptively trimmed for large N)."
   echo
 
   echo "## Key findings"
   echo
   if [ -n "$head_n" ]; then
-    fork_cost="$(pct "${MED[$head_n,fork_c2on]}" "${MED[$head_n,nofork_c2on]}")"
+    fc_pct="$(pct "${MED[$head_n,fork_c2on]}" "${MED[$head_n,nofork_c2on]}")"
+    fc_mult="$(mult "${MED[$head_n,fork_c2on]}" "${MED[$head_n,nofork_c2on]}")"
     echo "At **N=${head_n}** (${REPS[$head_n,fork_c2on]:-?} measured runs):"
     echo
-    echo "- **Fork cost:** forking ${head_n} cold JVMs is **${fork_cost}** vs in-process (both C2-on)."
+    echo "- **Fork cost:** forking ${head_n} cold JVMs takes **${fc_mult}** as long as in-process — **${fc_pct}** (both C2-on)."
     if [ "${MED[$head_n,fork_c2off]:-NA}" != "NA" ]; then
-      c2f="$(pct "${MED[$head_n,fork_c2off]}" "${MED[$head_n,fork_c2on]}")"
-      echo "- **C2 in the forks:** turning C2 off changes the forked column by **${c2f}**."
+      c2f_pct="$(pct "${MED[$head_n,fork_c2off]}" "${MED[$head_n,fork_c2on]}")"
+      c2f_mult="$(mult "${MED[$head_n,fork_c2off]}" "${MED[$head_n,fork_c2on]}")"
+      echo "- **C2 in the forks:** turning C2 off makes the forked column **${c2f_mult}** (**${c2f_pct}**)."
     fi
     if [ "${MED[$head_n,nofork_c2off]:-NA}" != "NA" ]; then
-      c2n="$(pct "${MED[$head_n,nofork_c2off]}" "${MED[$head_n,nofork_c2on]}")"
-      echo "- **C2 in-process:** turning C2 off changes the no-fork column by **${c2n}**."
+      c2n_pct="$(pct "${MED[$head_n,nofork_c2off]}" "${MED[$head_n,nofork_c2on]}")"
+      c2n_mult="$(mult "${MED[$head_n,nofork_c2off]}" "${MED[$head_n,nofork_c2on]}")"
+      echo "- **C2 in-process:** turning C2 off makes the no-fork column **${c2n_mult}** (**${c2n_pct}**)."
     fi
   else
     echo "_No cell produced a median — check $LOG and results/wall.tsv._"
@@ -308,7 +319,7 @@ mm_ymax="$(awk -v m="$mm_ymax" 'BEGIN{ b = 50; if (m < b) m = b; print (int((m -
   echo "no-fork/C2-on baseline for that N; values below 0 (within noise) clamped to 0._"
   echo
 
-  echo "## Wall time by N (median ± CV, delta vs baseline)"
+  echo "## Wall time by N (median ± CV, then delta % and × vs baseline)"
   echo
   echo "| N | no-fork C2-on (baseline) | no-fork C2-off | forked C2-on | forked C2-off |"
   echo "|---|---|---|---|---|"
@@ -321,18 +332,47 @@ mm_ymax="$(awk -v m="$mm_ymax" 'BEGIN{ b = 50; if (m < b) m = b; print (int((m -
 
   echo "## Derived"
   echo
-  echo "| N | fork cost (forked C2-on vs baseline) | C2 in forks (C2-off vs C2-on) |"
+  echo "| N | fork cost — forked C2-on vs baseline | C2 in forks — C2-off vs C2-on |"
   echo "|---|---|---|"
   for N in $NLIST; do
     fc="—"; cf="—"
     if [ "${MED[$N,fork_c2on]:-NA}" != "NA" ] && [ "${MED[$N,nofork_c2on]:-NA}" != "NA" ]; then
-      fc="$(pct "${MED[$N,fork_c2on]}" "${MED[$N,nofork_c2on]}")"
+      fc="$(delta "${MED[$N,fork_c2on]}" "${MED[$N,nofork_c2on]}")"
     fi
     if [ "${MED[$N,fork_c2off]:-NA}" != "NA" ] && [ "${MED[$N,fork_c2on]:-NA}" != "NA" ]; then
-      cf="$(pct "${MED[$N,fork_c2off]}" "${MED[$N,fork_c2on]}")"
+      cf="$(delta "${MED[$N,fork_c2off]}" "${MED[$N,fork_c2on]}")"
     fi
     printf '| %s | %s | %s |\n' "$N" "$fc" "$cf"
   done
+  echo
+  echo "## How the numbers are computed"
+  echo
+  echo "\`median\` = middle of the measured runs (mean of the two middle values when the"
+  echo "count is even). Everything else is relative to **B = that N's no-fork C2-on"
+  echo "median** (the baseline). For any config with median \`m\`:"
+  echo
+  echo '```text'
+  echo 'multiplier  =  m / B                 how many times as long as baseline'
+  echo 'delta %     =  100 × (m - B) / B     =  (multiplier - 1) × 100'
+  echo '```'
+  if [ -n "$head_n" ]; then
+    _B="${MED[$head_n,nofork_c2on]}"; _F="${MED[$head_n,fork_c2on]}"
+    _diff=$(( _F - _B ))
+    _pct="$(pct "$_F" "$_B")"
+    _mnum="$(awk -v b="$_B" -v f="$_F" 'BEGIN{ printf "%.2f", f/b }')"
+    echo
+    echo "Worked example — **N=${head_n}, forked C2-on** (medians from this run):"
+    echo
+    echo '```text'
+    echo "B (no-fork C2-on) = ${_B} ms        forked C2-on (m) = ${_F} ms"
+    echo "multiplier = ${_F} / ${_B}              = ${_mnum}×"
+    echo "delta %    = 100 × (${_F} - ${_B}) / ${_B}  = ${_pct}"
+    echo "cross-check: (${_mnum} - 1) × 100        = ${_pct}     (extra time ${_F} - ${_B} = ${_diff} ms)"
+    echo '```'
+    echo
+    echo "\`${_mnum}×\` and \`${_pct}\` are the same jump two ways: \`×\` counts the whole run,"
+    echo "\`+%\` counts only the added time, so they differ by exactly one baseline (100%)."
+  fi
   echo
   echo "_Raw per-run timings: \`results/wall.tsv\`. Per-cell stats: \`results/stats.tsv\`._"
 } > "$SUMMARY"
