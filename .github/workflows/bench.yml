@@ -1,9 +1,9 @@
 name: fork-bench
 
 # Wall-clock sweep of the fork-vs-in-process x C2-on/off matrix.
-# Manual dispatch (with a tunable N-list and repeat count) plus an optional
-# nightly run. ubuntu-latest only — GitHub-hosted runners are shared VMs, so
-# treat single runs as indicative and watch the CV column in the summary.
+# Manual dispatch only (with a tunable N-list and repeat count). ubuntu-latest
+# only — GitHub-hosted runners are shared VMs, so treat single runs as
+# indicative and watch the CV column in the summary.
 on:
   workflow_dispatch:
     inputs:
@@ -13,8 +13,6 @@ on:
       repeats:
         description: "measured runs per cell (adaptive: trimmed for large N)"
         default: "5"
-  schedule:
-    - cron: "0 3 * * *"   # optional nightly (03:00 UTC)
 
 jobs:
   bench:
