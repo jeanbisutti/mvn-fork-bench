@@ -3,7 +3,9 @@
 A standalone Maven benchmark that measures, in **wall-clock seconds only**, the
 cost of the way Surefire runs tests by default: **forking a fresh JVM per test
 class**. It compares that against running the *same* tests **in-process**, and
-checks whether having the **C2 JIT compiler** enabled changes the picture.
+checks whether having the **C2 JIT compiler** enabled changes the picture. It
+also times a **bare JVM start** (an empty `main`, no user code) so the per-fork
+cost can be split into "pure JVM startup" versus "everything Surefire adds".
 
 No profiling, no JIT statistics, no JFR, no hyperfine — just `date`, `mvn`, and
 `awk`.
@@ -45,6 +47,22 @@ Both knobs are POM properties read by the Surefire config:
 <argLine>${bench.argLine}</argLine>
 <includes><include>${bench.includes}</include></includes>
 ```
+
+### The bare-JVM baseline (outside the matrix)
+
+Alongside the 2×2, `run-bench.sh` times **one cold `java` start executing no
+user code**: an empty `main`, compiled once (untimed) into
+`target/jvm-baseline/`, then started and exited repeatedly with the same `java`
+binary the forks use (`JAVA_HOME` when set). It is measured on both C2 rows for
+symmetry — nothing runs long enough to JIT, so the two should agree within
+noise. Because it is N-independent it is recorded under the pseudo-N `-` in
+`wall.tsv`/`stats.tsv`, with at least 10 repeats (starts are cheap; the extra
+repeats buy precision).
+
+This is the number that turns "forking is X× slower" into a mechanism: the
+summary divides the marginal per-fork overhead, `(forked − no-fork) / N`, into
+the slice that is **pure JVM startup** and the remainder (Surefire fork
+scaffolding, test-class loading, per-class JIT re-warm).
 
 ## Class-set tiers
 
@@ -105,6 +123,18 @@ mvn -o -q surefire:test -Dbench.forkCount=1 -Dbench.reuseForks=false \
   -Dbench.argLine=-XX:TieredStopAtLevel=1
 ```
 
+And the bare-JVM baseline (no Maven involved — compile once, then time a start):
+
+```bash
+mkdir -p target/jvm-baseline
+printf 'public class Empty { public static void main(String[] a) {} }' \
+  > target/jvm-baseline/Empty.java
+javac -d target/jvm-baseline target/jvm-baseline/Empty.java
+
+time java -cp target/jvm-baseline Empty                            # C2 on
+time java -XX:TieredStopAtLevel=1 -cp target/jvm-baseline Empty    # C2 off
+```
+
 ### Regenerating the class sets
 
 ```bash
@@ -139,12 +169,20 @@ list and repeat count in the dispatch form.
 - The **Derived** table states the two headline quantities as percentages: *fork
   cost* (forked C2-on vs baseline) and *C2's effect within the forked column*
   (C2-off vs C2-on).
+- The **Bare JVM startup** section gives the cost of one cold, code-free `java`
+  start on both C2 rows, then computes what share of the marginal per-fork
+  overhead — `(forked − no-fork) / N` at the largest measured N — is pure JVM
+  startup versus Surefire's own fork machinery.
 
 ## Interpreting the axes (and a caveat)
 
 - **Fork cost** = forked − no-fork on the same C2 row; expected to grow with N.
 - **Floor & marginal fork** — N=0 is the goal's no-test floor; `N=1 − N=0`
   approximates one cold fork; N=10 shows whether per-fork cost is linear early.
+- **Bare start vs marginal fork** — a Surefire fork should always cost *more*
+  than the bare-JVM start (it boots the same JVM, then loads the provider and
+  the test class on top). If the reported per-fork overhead ever lands *below*
+  the bare start, the cells are within noise — check the CV columns.
 - **Caveat on no-fork C2-off:** `MAVEN_OPTS=-XX:TieredStopAtLevel=1` slows the
   *whole* Maven JVM (Maven's own work, not just the tests). The N=0 row captures
   part of that fixed overhead; keep it in mind when reading the no-fork C2-off
@@ -167,7 +205,7 @@ mvn-fork-bench/
 │   └── gen/                      generated at bench time, N ≥ 50 (gitignored)
 ├── tools/
 │   ├── gen-tests.sh              emit N test classes (→ fixed/ once, → gen/ per run)
-│   └── run-bench.sh              sweep the 2×2 × N, time, median/CV/Δ% → summary.md
+│   └── run-bench.sh              sweep the 2×2 × N + bare-JVM baseline → summary.md
 └── .github/workflows/bench.yml   ubuntu-latest; job summary + results artifact
 ```
 
